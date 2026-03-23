@@ -3,6 +3,7 @@ services:
     build:
       context: ./golang
     environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
       TEMPORAL_API_KEY: ${TEMPORAL_API_KEY:-}
@@ -11,6 +12,18 @@ services:
     depends_on:
       temporal:
         condition: service_healthy
+
+  ui:
+    build:
+      context: ./ui
+    environment:
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+      TEMPORAL_API_KEY: ${TEMPORAL_API_KEY:-}
+    volumes:
+      - ./ui:/home/node/app
+    ports:
+      - 5173:5173
 
   temporal:
     image: temporalio/temporal
@@ -22,3 +35,6 @@ services:
       interval: 10s
       timeout: 10s
       retries: 3
+    depends_on:
+      # Not a dependency of temporal, but ensures UI starts
+      - ui
