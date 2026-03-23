@@ -1,4 +1,13 @@
 repos:
+  - repo: https://github.com/mrsimonemms/pre-commit-hooks
+    rev: v1.2.1
+    hooks:
+      - id: go-fmt-import
+      - id: go-vet
+      - id: gofumpt
+      - id: go-err-check
+        entry: errcheck all
+      - id: go-static-check
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -26,3 +35,7 @@ repos:
     rev: v0.20.0
     hooks:
       - id: markdownlint-cli2
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.7.2
+    hooks:
+      - id: golangci-lint
