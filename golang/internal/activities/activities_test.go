@@ -1,6 +1,8 @@
 package activities_test
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,32 +11,58 @@ import (
 
 	"github.com/mrsimonemms/document-processing-demo/golang/internal/activities"
 	"github.com/mrsimonemms/document-processing-demo/golang/internal/models"
+	"github.com/mrsimonemms/document-processing-demo/golang/internal/providers"
 )
 
-func newActivityEnv(t *testing.T) *testsuite.TestActivityEnvironment {
+// fakePrimary implements both Summariser and QuestionAnswerer.
+// It returns deterministic output labelled "[openai]" so that existing
+// assertions remain meaningful without calling a real API.
+type fakePrimary struct{}
+
+func (f *fakePrimary) Name() models.ProviderName { return models.ProviderOpenAI }
+
+func (f *fakePrimary) Summarise(_ context.Context, req providers.SummariseRequest) (providers.SummariseResponse, error) {
+	return providers.SummariseResponse{
+		Summary: fmt.Sprintf("[openai] %d chunk(s)", len(req.Chunks)),
+	}, nil
+}
+
+func (f *fakePrimary) Answer(_ context.Context, req providers.AnswerRequest) (providers.AnswerResponse, error) {
+	return providers.AnswerResponse{
+		Answer: fmt.Sprintf("[openai] answer to: %s", req.Question),
+	}, nil
+}
+
+func newActivityEnv(t *testing.T) (*testsuite.TestActivityEnvironment, *activities.Activities) {
 	t.Helper()
 
 	ts := &testsuite.WorkflowTestSuite{}
 	env := ts.NewTestActivityEnvironment()
-	env.RegisterActivity(activities.ExtractDocumentTextActivity)
-	env.RegisterActivity(activities.ChunkDocumentActivity)
-	env.RegisterActivity(activities.SummariseDocumentActivity)
-	env.RegisterActivity(activities.AnswerQuestionActivity)
 
-	return env
+	primary := &fakePrimary{}
+	fallback := &providers.Anthropic{}
+
+	acts := activities.NewActivities(
+		[]providers.Summariser{primary, fallback},
+		[]providers.QuestionAnswerer{primary, fallback},
+	)
+
+	env.RegisterActivity(acts)
+
+	return env, acts
 }
 
-// TestSummariseDocumentActivity_HappyPath verifies that the openai provider is
+// TestSummariseDocumentActivity_HappyPath verifies that the primary provider is
 // selected by default and that no fallback occurs.
 func TestSummariseDocumentActivity_HappyPath(t *testing.T) {
-	env := newActivityEnv(t)
+	env, acts := newActivityEnv(t)
 
 	input := models.SummariseInput{
 		Chunks:   []string{"the quick brown fox"},
 		Scenario: models.ScenarioHappyPath,
 	}
 
-	val, err := env.ExecuteActivity(activities.SummariseDocumentActivity, input)
+	val, err := env.ExecuteActivity(acts.SummariseDocumentActivity, input)
 	require.NoError(t, err)
 
 	var result models.SummariseResult
@@ -49,14 +77,14 @@ func TestSummariseDocumentActivity_HappyPath(t *testing.T) {
 // provider is replaced by a FaultyProvider, the failover mechanism moves to
 // the fallback, and FallbackOccurred is set to true.
 func TestSummariseDocumentActivity_ProviderFailover(t *testing.T) {
-	env := newActivityEnv(t)
+	env, acts := newActivityEnv(t)
 
 	input := models.SummariseInput{
 		Chunks:   []string{"the quick brown fox"},
 		Scenario: models.ScenarioProviderFailover,
 	}
 
-	val, err := env.ExecuteActivity(activities.SummariseDocumentActivity, input)
+	val, err := env.ExecuteActivity(acts.SummariseDocumentActivity, input)
 	require.NoError(t, err)
 
 	var result models.SummariseResult
@@ -71,7 +99,7 @@ func TestSummariseDocumentActivity_ProviderFailover(t *testing.T) {
 // the activity returns an error on attempt 1 under the fail_once_summarise
 // scenario. Temporal would retry this automatically in a real workflow run.
 func TestSummariseDocumentActivity_FailOnceSummarise_FirstAttempt(t *testing.T) {
-	env := newActivityEnv(t)
+	env, acts := newActivityEnv(t)
 
 	input := models.SummariseInput{
 		Chunks:   []string{"the quick brown fox"},
@@ -80,13 +108,13 @@ func TestSummariseDocumentActivity_FailOnceSummarise_FirstAttempt(t *testing.T) 
 
 	// The test environment runs with attempt=1 by default.
 	// The activity must return an error on this attempt.
-	_, err := env.ExecuteActivity(activities.SummariseDocumentActivity, input)
+	_, err := env.ExecuteActivity(acts.SummariseDocumentActivity, input)
 	require.Error(t, err)
 }
 
 // TestExtractDocumentTextActivity passes content through unchanged.
 func TestExtractDocumentTextActivity(t *testing.T) {
-	env := newActivityEnv(t)
+	env, _ := newActivityEnv(t)
 
 	input := models.DocumentInput{
 		DocumentID: "doc-1",
@@ -94,7 +122,7 @@ func TestExtractDocumentTextActivity(t *testing.T) {
 		Scenario:   models.ScenarioHappyPath,
 	}
 
-	val, err := env.ExecuteActivity(activities.ExtractDocumentTextActivity, input)
+	val, err := env.ExecuteActivity(activities.ExtractDocumentTextActivityName, input)
 	require.NoError(t, err)
 
 	var text string
@@ -104,9 +132,9 @@ func TestExtractDocumentTextActivity(t *testing.T) {
 
 // TestChunkDocumentActivity verifies that content is split correctly.
 func TestChunkDocumentActivity(t *testing.T) {
-	env := newActivityEnv(t)
+	env, _ := newActivityEnv(t)
 
-	val, err := env.ExecuteActivity(activities.ChunkDocumentActivity, "one two three")
+	val, err := env.ExecuteActivity(activities.ChunkDocumentActivityName, "one two three")
 	require.NoError(t, err)
 
 	var chunks []string
@@ -115,10 +143,10 @@ func TestChunkDocumentActivity(t *testing.T) {
 	assert.Equal(t, "one two three", chunks[0])
 }
 
-// TestAnswerQuestionActivity_HappyPath verifies that the openai provider is
+// TestAnswerQuestionActivity_HappyPath verifies that the primary provider is
 // selected by default and that no fallback occurs.
 func TestAnswerQuestionActivity_HappyPath(t *testing.T) {
-	env := newActivityEnv(t)
+	env, acts := newActivityEnv(t)
 
 	input := models.AnswerInput{
 		Content:  "the quick brown fox",
@@ -126,7 +154,7 @@ func TestAnswerQuestionActivity_HappyPath(t *testing.T) {
 		Scenario: models.ScenarioHappyPath,
 	}
 
-	val, err := env.ExecuteActivity(activities.AnswerQuestionActivity, input)
+	val, err := env.ExecuteActivity(acts.AnswerQuestionActivity, input)
 	require.NoError(t, err)
 
 	var result models.AnswerResult
@@ -141,7 +169,7 @@ func TestAnswerQuestionActivity_HappyPath(t *testing.T) {
 // provider is replaced by a FaultyQuestionProvider under the failover scenario,
 // causing the fallback provider to be used.
 func TestAnswerQuestionActivity_ProviderFailover(t *testing.T) {
-	env := newActivityEnv(t)
+	env, acts := newActivityEnv(t)
 
 	input := models.AnswerInput{
 		Content:  "the quick brown fox",
@@ -149,7 +177,7 @@ func TestAnswerQuestionActivity_ProviderFailover(t *testing.T) {
 		Scenario: models.ScenarioProviderFailover,
 	}
 
-	val, err := env.ExecuteActivity(activities.AnswerQuestionActivity, input)
+	val, err := env.ExecuteActivity(acts.AnswerQuestionActivity, input)
 	require.NoError(t, err)
 
 	var result models.AnswerResult
