@@ -29,6 +29,9 @@ type Summariser interface {
 type AnswerRequest struct {
 	Content  string
 	Question string
+	// History holds recent Q&A pairs from the session for conversational context.
+	// It is already bounded by the workflow before the activity is called.
+	History []models.QA
 }
 
 // AnswerResponse is the output from a provider's Answer call.
