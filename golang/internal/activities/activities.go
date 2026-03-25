@@ -13,20 +13,37 @@ import (
 
 const wordsPerChunk = 100
 
-// ExtractDocumentTextActivity returns the document content unchanged.
-//
-// In a production system this would parse a binary format, call an OCR
-// service, or decode a base64-encoded payload. Here it is intentionally
-// trivial so the focus stays on orchestration rather than parsing logic.
-func ExtractDocumentTextActivity(_ context.Context, input models.DocumentInput) (string, error) {
-	return input.Content, nil
+// Activity type names used when scheduling activities from a workflow.
+// These match the method names on Activities as registered with Temporal.
+const (
+	AnswerQuestionActivityName      = "AnswerQuestionActivity"
+	ChunkDocumentActivityName       = "ChunkDocumentActivity"
+	ExtractDocumentTextActivityName = "ExtractDocumentTextActivity"
+	SummariseDocumentActivityName   = "SummariseDocumentActivity"
+)
+
+// Activities holds the provider chains injected at worker startup.
+// Construct one via NewActivities and register its methods as Temporal activities.
+type Activities struct {
+	summarisers []providers.Summariser
+	questioners []providers.QuestionAnswerer
+}
+
+// NewActivities creates an Activities value with the given provider chains.
+// The chains are used by SummariseDocumentActivity and AnswerQuestionActivity.
+// Both chains are copied so that scenario injection never mutates the originals.
+func NewActivities(summarisers []providers.Summariser, questioners []providers.QuestionAnswerer) *Activities {
+	return &Activities{
+		summarisers: summarisers,
+		questioners: questioners,
+	}
 }
 
 // ChunkDocumentActivity splits the extracted text into fixed-size word chunks.
 //
 // Chunking is deterministic: given the same input it always produces the same
 // output. No randomness or external calls.
-func ChunkDocumentActivity(_ context.Context, text string) ([]string, error) {
+func (a *Activities) ChunkDocumentActivity(_ context.Context, text string) ([]string, error) {
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		return []string{text}, nil
@@ -39,6 +56,15 @@ func ChunkDocumentActivity(_ context.Context, text string) ([]string, error) {
 	}
 
 	return chunks, nil
+}
+
+// ExtractDocumentTextActivity returns the document content unchanged.
+//
+// In a production system this would parse a binary format, call an OCR
+// service, or decode a base64-encoded payload. Here it is intentionally
+// trivial so the focus stays on orchestration rather than parsing logic.
+func (a *Activities) ExtractDocumentTextActivity(_ context.Context, input models.DocumentInput) (string, error) {
+	return input.Content, nil
 }
 
 // SummariseDocumentActivity produces a summary from the chunks via the
@@ -56,7 +82,7 @@ func ChunkDocumentActivity(_ context.Context, text string) ([]string, error) {
 //
 // All failure injection is deterministic and reads from input.Scenario only.
 // No global state or randomness is involved.
-func SummariseDocumentActivity(ctx context.Context, input models.SummariseInput) (models.SummariseResult, error) {
+func (a *Activities) SummariseDocumentActivity(ctx context.Context, input models.SummariseInput) (models.SummariseResult, error) {
 	// Activity-level retry injection: fail the whole activity on attempt 1.
 	// Temporal retries the activity automatically; the second attempt succeeds.
 	if input.Scenario == models.ScenarioFailOnceSummarise {
@@ -69,7 +95,9 @@ func SummariseDocumentActivity(ctx context.Context, input models.SummariseInput)
 		}
 	}
 
-	chain := providers.DefaultChain()
+	// Copy the chain so scenario injection does not mutate the base slice.
+	chain := make([]providers.Summariser, len(a.summarisers))
+	copy(chain, a.summarisers)
 
 	// Provider-level failure injection: replace the primary with a failing shim.
 	// The failover loop tries primary (fails) then falls through to the fallback.

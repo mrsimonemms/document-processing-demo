@@ -51,10 +51,24 @@ root go.mod). Do not add application logic to the root.
 * Go 1.22 or later
 * A running Temporal server (use [Temporal CLI](https://docs.temporal.io/cli):
   `temporal server start-dev`)
+* An OpenAI API key
+
+**AI provider configuration:**
+
+| Variable         | Required | Purpose                             |
+| ---------------- | -------- | ----------------------------------- |
+| `OPENAI_API_KEY` | Yes      | OpenAI API key                      |
+| `OPENAI_MODEL`   | No       | Model name (default: `gpt-4o-mini`) |
+
+OpenAI is the primary AI provider. The Anthropic provider is a deterministic
+fake used only as the fallback in the demo failover scenario. It does not
+require an Anthropic API key. Additional real providers can be added later by
+implementing the `Summariser` and `QuestionAnswerer` interfaces.
 
 ### Start the worker
 
 ```bash
+export OPENAI_API_KEY=sk-...
 cd golang
 go run .
 ```

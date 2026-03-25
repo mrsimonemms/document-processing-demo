@@ -85,11 +85,19 @@ type QuestionUpdateResult struct {
 	Answer string `json:"answer"`
 }
 
+// MaxAnswerHistory is the maximum number of recent Q&A pairs included in the
+// context passed to AnswerQuestionActivity. Keeping this small bounds prompt
+// size deterministically without token counting.
+const MaxAnswerHistory = 5
+
 // AnswerInput is passed to AnswerQuestionActivity.
 type AnswerInput struct {
 	Content  string   `json:"content"`
 	Question string   `json:"question"`
 	Scenario Scenario `json:"scenario"`
+	// History holds the most recent Q&A pairs from the session, capped at
+	// MaxAnswerHistory entries. Providers use this for conversational context.
+	History []QA `json:"history,omitempty"`
 }
 
 // AnswerResult is the output of AnswerQuestionActivity.

@@ -15,8 +15,10 @@ import (
 // the primary provider is tried first, and the fallback is used if it fails.
 // Under ScenarioProviderFailover, the primary provider is replaced with a faulty
 // wrapper that always errors, forcing the fallback to be used.
-func AnswerQuestionActivity(ctx context.Context, input models.AnswerInput) (models.AnswerResult, error) {
-	chain := providers.DefaultQuestionChain()
+func (a *Activities) AnswerQuestionActivity(ctx context.Context, input models.AnswerInput) (models.AnswerResult, error) {
+	// Copy the chain so scenario injection does not mutate the base slice.
+	chain := make([]providers.QuestionAnswerer, len(a.questioners))
+	copy(chain, a.questioners)
 
 	if input.Scenario == models.ScenarioProviderFailover && len(chain) > 0 {
 		chain[0] = providers.NewFaultyQuestionProvider(chain[0], "simulated primary provider failure")
@@ -25,6 +27,7 @@ func AnswerQuestionActivity(ctx context.Context, input models.AnswerInput) (mode
 	result, err := providers.AnswerWithFailover(ctx, chain, providers.AnswerRequest{
 		Content:  input.Content,
 		Question: input.Question,
+		History:  input.History,
 	})
 	if err != nil {
 		return models.AnswerResult{}, err

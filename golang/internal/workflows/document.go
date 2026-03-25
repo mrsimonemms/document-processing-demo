@@ -10,6 +10,15 @@ import (
 	"github.com/mrsimonemms/document-processing-demo/golang/internal/models"
 )
 
+// recentHistory returns the last n entries from qa, or the full slice if
+// len(qa) <= n. It never modifies the original slice.
+func recentHistory(qa []models.QA, n int) []models.QA {
+	if len(qa) <= n {
+		return qa
+	}
+	return qa[len(qa)-n:]
+}
+
 func defaultActivityOptions() workflow.ActivityOptions {
 	return workflow.ActivityOptions{
 		StartToCloseTimeout: 30 * time.Second,
@@ -48,13 +57,13 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 
 	// Step 1: extract text
 	var text string
-	if err := workflow.ExecuteActivity(opts, activities.ExtractDocumentTextActivity, input).Get(opts, &text); err != nil {
+	if err := workflow.ExecuteActivity(opts, activities.ExtractDocumentTextActivityName, input).Get(opts, &text); err != nil {
 		return err
 	}
 
 	// Step 2: chunk the extracted text
 	var chunks []string
-	if err := workflow.ExecuteActivity(opts, activities.ChunkDocumentActivity, text).Get(opts, &chunks); err != nil {
+	if err := workflow.ExecuteActivity(opts, activities.ChunkDocumentActivityName, text).Get(opts, &chunks); err != nil {
 		return err
 	}
 
@@ -66,7 +75,7 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 	}
 
 	var summariseResult models.SummariseResult
-	if err := workflow.ExecuteActivity(opts, activities.SummariseDocumentActivity, summariseInput).Get(opts, &summariseResult); err != nil {
+	if err := workflow.ExecuteActivity(opts, activities.SummariseDocumentActivityName, summariseInput).Get(opts, &summariseResult); err != nil {
 		return err
 	}
 
@@ -83,14 +92,21 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 	if err := workflow.SetUpdateHandler(ctx, "askQuestion",
 		func(ctx workflow.Context, req models.QuestionUpdate) (models.QuestionUpdateResult, error) {
 			actCtx := workflow.WithActivityOptions(ctx, defaultActivityOptions())
+
+			// Snapshot the recent history before the activity runs.
+			// Append only after the answer is returned so the current question
+			// is never included in its own context.
+			history := recentHistory(state.QA, models.MaxAnswerHistory)
+
 			answerInput := models.AnswerInput{
 				Content:  input.Content,
 				Question: req.Question,
 				Scenario: req.Scenario,
+				History:  history,
 			}
 
 			var result models.AnswerResult
-			if err := workflow.ExecuteActivity(actCtx, activities.AnswerQuestionActivity, answerInput).Get(actCtx, &result); err != nil {
+			if err := workflow.ExecuteActivity(actCtx, activities.AnswerQuestionActivityName, answerInput).Get(actCtx, &result); err != nil {
 				return models.QuestionUpdateResult{}, err
 			}
 
