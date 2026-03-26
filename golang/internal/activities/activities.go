@@ -2,6 +2,7 @@ package activities
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"go.temporal.io/sdk/activity"
@@ -119,6 +120,14 @@ func selectQuestioners(chain []providers.QuestionAnswerer, override models.Provi
 //     with a FaultyProvider shim. SummariseWithFailover tries the primary
 //     (fails), then uses the fallback. FallbackOccurred is set to true.
 //
+//   - provider_down: the primary provider is replaced with a retryable shim.
+//     SummariseWithFailover retries the primary up to 3 times before moving on
+//     to the fallback provider.
+//
+//   - provider_rate_limit: the primary provider is replaced with a
+//     non-retryable rate-limit shim. SummariseWithFailover skips retries and
+//     fails over immediately to the next provider.
+//
 // Provider selection is controlled by input.ProviderOverride before scenario
 // injection is applied. All failure injection is deterministic and reads from
 // input.Scenario only. No global state or randomness is involved.
@@ -146,5 +155,21 @@ func (a *Activities) SummariseDocumentActivity(ctx context.Context, input models
 		chain[0] = providers.NewFaultyProvider(chain[0], "simulated primary provider failure")
 	}
 
-	return providers.SummariseWithFailover(ctx, chain, providers.SummariseRequest{Chunks: input.Chunks})
+	if input.Scenario == models.ScenarioProviderDown && len(chain) > 0 {
+		chain[0] = providers.NewDownProvider(chain[0], fmt.Sprintf("simulated %s provider down", chain[0].Name()))
+	}
+
+	if input.Scenario == models.ScenarioProviderRateLimit && len(chain) > 0 {
+		chain[0] = providers.NewRateLimitProvider(chain[0], fmt.Sprintf("simulated %s provider rate limit", chain[0].Name()))
+	}
+
+	result, err := providers.SummariseWithFailover(ctx, chain, providers.SummariseRequest{Chunks: input.Chunks})
+	if err != nil {
+		if providers.IsProviderError(err) {
+			return models.SummariseResult{}, temporal.NewNonRetryableApplicationError(err.Error(), "ProviderError", err)
+		}
+		return models.SummariseResult{}, err
+	}
+
+	return result, nil
 }

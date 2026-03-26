@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"errors"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -26,6 +27,11 @@ func defaultActivityOptions() workflow.ActivityOptions {
 			MaximumAttempts: 3,
 		},
 	}
+}
+
+func isProviderActivityError(err error) bool {
+	var applicationErr *temporal.ApplicationError
+	return errors.As(err, &applicationErr) && applicationErr.Type() == "ProviderError"
 }
 
 // DocumentWorkflow is the single long-lived workflow for a document session.
@@ -71,30 +77,7 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 		return err
 	}
 
-	// Step 3: summarise via provider chain
-	// Failure injection and provider selection are handled inside the activity.
-	summariseInput := models.SummariseInput{
-		Chunks:           chunks,
-		Scenario:         input.Scenario,
-		ProviderOverride: input.ProviderOverride,
-	}
-
-	var summariseResult models.SummariseResult
-	if err := workflow.ExecuteActivity(opts, activities.SummariseDocumentActivityName, summariseInput).Get(opts, &summariseResult); err != nil {
-		return err
-	}
-
-	state = models.DocumentState{
-		Phase:            "summarised",
-		Summary:          summariseResult.Summary,
-		Provider:         summariseResult.Provider,
-		Model:            summariseResult.Model,
-		FallbackOccurred: summariseResult.FallbackOccurred,
-		QA:               state.QA,
-		ProviderOverride: input.ProviderOverride,
-	}
-
-	// Step 4: register update handler for questions.
+	// Step 3: register update handler for questions.
 	// Each update runs AnswerQuestionActivity and returns the answer to the caller.
 	// The document content is captured from the workflow input.
 	if err := workflow.SetUpdateHandler(ctx, "askQuestion",
@@ -116,10 +99,12 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 
 			var result models.AnswerResult
 			if err := workflow.ExecuteActivity(actCtx, activities.AnswerQuestionActivityName, answerInput).Get(actCtx, &result); err != nil {
+				state.LastQuestionError = err.Error()
 				return models.QuestionUpdateResult{}, err
 			}
 
 			state.ProviderOverride = req.ProviderOverride
+			state.LastQuestionError = ""
 			state.QA = append(state.QA, models.QA{
 				Question: req.Question,
 				Answer:   result.Answer,
@@ -131,6 +116,31 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 		},
 	); err != nil {
 		return err
+	}
+
+	// Step 4: summarise via provider chain.
+	// Failure injection and provider selection are handled inside the activity.
+	summariseInput := models.SummariseInput{
+		Chunks:           chunks,
+		Scenario:         input.Scenario,
+		ProviderOverride: input.ProviderOverride,
+	}
+
+	var summariseResult models.SummariseResult
+	if err := workflow.ExecuteActivity(opts, activities.SummariseDocumentActivityName, summariseInput).Get(opts, &summariseResult); err != nil {
+		if isProviderActivityError(err) {
+			state.Phase = "summary_failed"
+			state.SummaryError = err.Error()
+		} else {
+			return err
+		}
+	} else {
+		state.Phase = "summarised"
+		state.Summary = summariseResult.Summary
+		state.SummaryError = ""
+		state.Provider = summariseResult.Provider
+		state.Model = summariseResult.Model
+		state.FallbackOccurred = summariseResult.FallbackOccurred
 	}
 
 	// Step 5: wait for the "end" signal, then exit cleanly.

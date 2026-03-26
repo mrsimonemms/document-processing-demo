@@ -7,9 +7,11 @@
 
   let phase = $state(untrack(() => data.phase));
   let summary = $state(untrack(() => data.summary));
+  let summaryError = $state(untrack(() => data.summaryError));
   let provider = $state(untrack(() => data.provider));
   let model = $state(untrack(() => data.model));
   let fallbackOccurred = $state(untrack(() => data.fallbackOccurred ?? false));
+  let lastQuestionError = $state(untrack(() => data.lastQuestionError));
   let qa: {
     question: string;
     answer: string;
@@ -32,9 +34,11 @@
     untrack(() => {
       phase = data.phase;
       summary = data.summary;
+      summaryError = data.summaryError;
       provider = data.provider;
       model = data.model;
       fallbackOccurred = data.fallbackOccurred ?? false;
+      lastQuestionError = data.lastQuestionError;
       qa = [...data.qa];
       providerOverride = data.providerOverride ?? 'default';
       error = '';
@@ -52,9 +56,11 @@
         phase = state.phase;
       }
       summary = state.summary;
+      summaryError = state.summaryError;
       provider = state.provider;
       model = state.model;
       fallbackOccurred = state.fallbackOccurred ?? false;
+      lastQuestionError = state.lastQuestionError;
       qa = state.qa ?? [];
       providerOverride = state.providerOverride ?? 'default';
     } catch {
@@ -117,6 +123,7 @@
       const body = await res.json();
       if (body.error) {
         error = body.error;
+        await refreshState();
       } else {
         form.reset();
         await refreshState();
@@ -163,6 +170,11 @@
           ? ' (fallback)'
           : ''}
       </p>
+    </section>
+  {:else if summaryError}
+    <section class="mb-5">
+      <h2 class="subtitle is-5">Summary</h2>
+      <p class="has-text-danger">{summaryError}</p>
     </section>
   {/if}
 
@@ -217,8 +229,10 @@
               <option value="happy_path">Happy path</option>
               <option value="fail_once_summarise">Fail once on summarise</option
               >
+              <option value="provider_down">Provider down</option>
+              <option value="provider_rate_limit">Provider rate-limit</option>
               <option value="primary_provider_failure"
-                >Primary provider failure</option
+                >Primary provider failure (legacy)</option
               >
             </select>
           </div>
@@ -238,7 +252,7 @@
         </div>
       </div>
 
-      {#if error}
+      {#if error && error !== lastQuestionError}
         <p class="help is-danger">{error}</p>
       {/if}
 
@@ -268,16 +282,20 @@
       >
     </p>
   </section>
-{:else if phase === 'summarised'}
-  <!-- ── Summary ────────────────────────────────────────────── -->
+{:else if phase === 'summarised' || phase === 'summary_failed'}
+  <!-- ── Summary / Summary Failure ──────────────────────────── -->
   <section class="mb-5">
     <h2 class="subtitle is-5">Summary</h2>
-    <p>{summary}</p>
-    <p class="is-size-7 has-text-grey">
-      Provider: {provider}{model ? ` · Model: ${model}` : ''}{fallbackOccurred
-        ? ' (fallback used)'
-        : ''}
-    </p>
+    {#if phase === 'summary_failed'}
+      <p class="has-text-danger">{summaryError}</p>
+    {:else}
+      <p>{summary}</p>
+      <p class="is-size-7 has-text-grey">
+        Provider: {provider}{model ? ` · Model: ${model}` : ''}{fallbackOccurred
+          ? ' (fallback used)'
+          : ''}
+      </p>
+    {/if}
   </section>
 
   <!-- ── Q&A ────────────────────────────────────────────────── -->
@@ -309,8 +327,10 @@
               <option value="happy_path">Happy path</option>
               <option value="fail_once_summarise">Fail once on summarise</option
               >
+              <option value="provider_down">Provider down</option>
+              <option value="provider_rate_limit">Provider rate-limit</option>
               <option value="primary_provider_failure"
-                >Primary provider failure</option
+                >Primary provider failure (legacy)</option
               >
             </select>
           </div>
@@ -329,6 +349,10 @@
           </div>
         </div>
       </div>
+
+      {#if lastQuestionError}
+        <p class="help is-danger">{lastQuestionError}</p>
+      {/if}
 
       {#if error}
         <p class="help is-danger">{error}</p>
