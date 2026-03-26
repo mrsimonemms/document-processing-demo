@@ -2,8 +2,6 @@ package providers
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/mrsimonemms/document-processing-demo/golang/internal/models"
 )
@@ -16,6 +14,7 @@ type SummariseRequest struct {
 // SummariseResponse is the output from a provider's Summarise call.
 type SummariseResponse struct {
 	Summary string
+	Model   string
 }
 
 // Summariser is the interface each provider must implement for summarisation.
@@ -37,6 +36,7 @@ type AnswerRequest struct {
 // AnswerResponse is the output from a provider's Answer call.
 type AnswerResponse struct {
 	Answer string
+	Model  string
 }
 
 // QuestionAnswerer is the interface each provider must implement for Q&A.
@@ -44,40 +44,4 @@ type AnswerResponse struct {
 type QuestionAnswerer interface {
 	Name() models.ProviderName
 	Answer(ctx context.Context, req AnswerRequest) (AnswerResponse, error)
-}
-
-// buildSummary produces a deterministic summary string for fake providers.
-// The label identifies which provider generated the output, which is useful
-// during a demo to make provider selection visible.
-func buildSummary(label string, req SummariseRequest) string {
-	wordCount := 0
-	for _, chunk := range req.Chunks {
-		wordCount += len(strings.Fields(chunk))
-	}
-
-	preview := ""
-	if len(req.Chunks) > 0 {
-		preview = req.Chunks[0]
-		if len(preview) > 120 {
-			preview = preview[:120] + "..."
-		}
-	}
-
-	return fmt.Sprintf("[%s] %d chunk(s), %d word(s). Preview: %s",
-		label, len(req.Chunks), wordCount, preview)
-}
-
-// buildAnswer produces a deterministic answer string for fake providers.
-// The label identifies the provider. In a real integration this would be
-// replaced by an LLM call grounded on the supplied content.
-func buildAnswer(label string, req AnswerRequest) string {
-	words := strings.Fields(req.Content)
-
-	context := req.Content
-	if len(context) > 100 {
-		context = context[:100] + "..."
-	}
-
-	return fmt.Sprintf("[%s] Answer to '%s' (%d word(s) of context): %s",
-		label, req.Question, len(words), context)
 }

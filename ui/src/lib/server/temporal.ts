@@ -16,6 +16,8 @@ export type Scenario =
   | 'fail_once_summarise'
   | 'primary_provider_failure';
 
+export type ProviderOverride = 'default' | 'openai' | 'anthropic';
+
 // SessionState represents the current state of a document session as seen by
 // the UI. The phase field drives which section of the page is shown.
 export interface SessionState {
@@ -28,8 +30,15 @@ export interface SessionState {
   phase: 'pending' | 'processing' | 'summarised' | 'ended' | 'failed';
   summary?: string;
   provider?: string;
+  model?: string;
   fallbackOccurred?: boolean;
-  qa: Array<{ question: string; answer: string }>;
+  qa: Array<{
+    question: string;
+    answer: string;
+    provider?: string;
+    model?: string;
+  }>;
+  providerOverride?: ProviderOverride;
 }
 
 // DocumentState mirrors the Go DocumentState struct returned by the getState query.
@@ -37,8 +46,15 @@ interface DocumentState {
   phase: 'processing' | 'summarised' | 'ended';
   summary?: string;
   provider?: string;
+  model?: string;
   fallbackOccurred?: boolean;
-  qa: Array<{ question: string; answer: string }>;
+  qa: Array<{
+    question: string;
+    answer: string;
+    provider?: string;
+    model?: string;
+  }>;
+  providerOverride?: ProviderOverride;
 }
 
 let clientInstance: Client | null = null;
@@ -85,6 +101,7 @@ export async function getOrCreateDocumentWorkflow(
   documentId: string,
   content: string,
   scenario: Scenario,
+  providerOverride: ProviderOverride,
 ): Promise<void> {
   const client = await getClient();
   const handle = client.workflow.getHandle(documentId);
@@ -102,7 +119,7 @@ export async function getOrCreateDocumentWorkflow(
   await client.workflow.start('document', {
     taskQueue: TASK_QUEUE,
     workflowId: documentId,
-    args: [{ documentId, content, scenario }],
+    args: [{ documentId, content, scenario, providerOverride }],
     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
   });
 }
@@ -125,8 +142,10 @@ export async function getDocumentState(
         phase: state.phase,
         summary: state.summary,
         provider: state.provider,
+        model: state.model,
         fallbackOccurred: state.fallbackOccurred,
         qa: state.qa ?? [],
+        providerOverride: state.providerOverride,
       };
     }
 
@@ -142,8 +161,10 @@ export async function getDocumentState(
           phase: 'ended',
           summary: state.summary,
           provider: state.provider,
+          model: state.model,
           fallbackOccurred: state.fallbackOccurred,
           qa: state.qa ?? [],
+          providerOverride: state.providerOverride,
         };
       } catch {
         return { documentId, phase: 'ended', qa: [] };
@@ -173,15 +194,22 @@ export async function askDocumentQuestion(
   documentId: string,
   question: string,
   scenario: Scenario,
+  providerOverride: ProviderOverride,
 ): Promise<string> {
   const client = await getClient();
   const handle = client.workflow.getHandle(documentId);
 
   const result = await handle.executeUpdate<
     { answer: string },
-    [{ question: string; scenario: Scenario }]
+    [
+      {
+        question: string;
+        scenario: Scenario;
+        providerOverride: ProviderOverride;
+      },
+    ]
   >('askQuestion', {
-    args: [{ question, scenario }],
+    args: [{ question, scenario, providerOverride }],
   });
 
   return result.answer;
