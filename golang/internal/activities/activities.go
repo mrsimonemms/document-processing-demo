@@ -67,6 +67,45 @@ func (a *Activities) ExtractDocumentTextActivity(_ context.Context, input models
 	return input.Content, nil
 }
 
+// selectSummarisers returns the subset of chain to use based on the provider
+// override. Default (or empty) returns the full chain. A named override filters
+// to only the matching provider; if no match is found the full chain is used.
+func selectSummarisers(chain []providers.Summariser, override models.ProviderOverride) []providers.Summariser {
+	if override == models.ProviderOverrideDefault || override == "" {
+		return chain
+	}
+	target := models.ProviderName(override)
+	var selected []providers.Summariser
+	for _, p := range chain {
+		if p.Name() == target {
+			selected = append(selected, p)
+		}
+	}
+	if len(selected) == 0 {
+		return chain
+	}
+	return selected
+}
+
+// selectQuestioners returns the subset of chain to use based on the provider
+// override. Same rules as selectSummarisers.
+func selectQuestioners(chain []providers.QuestionAnswerer, override models.ProviderOverride) []providers.QuestionAnswerer {
+	if override == models.ProviderOverrideDefault || override == "" {
+		return chain
+	}
+	target := models.ProviderName(override)
+	var selected []providers.QuestionAnswerer
+	for _, p := range chain {
+		if p.Name() == target {
+			selected = append(selected, p)
+		}
+	}
+	if len(selected) == 0 {
+		return chain
+	}
+	return selected
+}
+
 // SummariseDocumentActivity produces a summary from the chunks via the
 // provider chain and returns metadata about which provider was used.
 //
@@ -80,8 +119,9 @@ func (a *Activities) ExtractDocumentTextActivity(_ context.Context, input models
 //     with a FaultyProvider shim. SummariseWithFailover tries the primary
 //     (fails), then uses the fallback. FallbackOccurred is set to true.
 //
-// All failure injection is deterministic and reads from input.Scenario only.
-// No global state or randomness is involved.
+// Provider selection is controlled by input.ProviderOverride before scenario
+// injection is applied. All failure injection is deterministic and reads from
+// input.Scenario only. No global state or randomness is involved.
 func (a *Activities) SummariseDocumentActivity(ctx context.Context, input models.SummariseInput) (models.SummariseResult, error) {
 	// Activity-level retry injection: fail the whole activity on attempt 1.
 	// Temporal retries the activity automatically; the second attempt succeeds.
@@ -95,9 +135,10 @@ func (a *Activities) SummariseDocumentActivity(ctx context.Context, input models
 		}
 	}
 
-	// Copy the chain so scenario injection does not mutate the base slice.
-	chain := make([]providers.Summariser, len(a.summarisers))
-	copy(chain, a.summarisers)
+	// Select providers then copy so scenario injection does not mutate the base slice.
+	base := selectSummarisers(a.summarisers, input.ProviderOverride)
+	chain := make([]providers.Summariser, len(base))
+	copy(chain, base)
 
 	// Provider-level failure injection: replace the primary with a failing shim.
 	// The failover loop tries primary (fails) then falls through to the fallback.

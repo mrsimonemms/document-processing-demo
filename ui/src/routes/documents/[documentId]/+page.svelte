@@ -8,9 +8,16 @@
   let phase = $state(untrack(() => data.phase));
   let summary = $state(untrack(() => data.summary));
   let provider = $state(untrack(() => data.provider));
+  let model = $state(untrack(() => data.model));
   let fallbackOccurred = $state(untrack(() => data.fallbackOccurred ?? false));
-  let qa: { question: string; answer: string }[] = $state(
-    untrack(() => [...data.qa]),
+  let qa: {
+    question: string;
+    answer: string;
+    provider?: string;
+    model?: string;
+  }[] = $state(untrack(() => [...data.qa]));
+  let providerOverride = $state(
+    untrack(() => data.providerOverride ?? 'default'),
   );
   let error = $state('');
   let submitting = $state(false);
@@ -26,8 +33,10 @@
       phase = data.phase;
       summary = data.summary;
       provider = data.provider;
+      model = data.model;
       fallbackOccurred = data.fallbackOccurred ?? false;
       qa = [...data.qa];
+      providerOverride = data.providerOverride ?? 'default';
       error = '';
       submitting = false;
     });
@@ -42,10 +51,12 @@
       if (phase !== 'ended') {
         phase = state.phase;
       }
-      summary = state.summary ?? summary;
-      provider = state.provider ?? provider;
+      summary = state.summary;
+      provider = state.provider;
+      model = state.model;
       fallbackOccurred = state.fallbackOccurred ?? false;
-      qa = state.qa ?? qa;
+      qa = state.qa ?? [];
+      providerOverride = state.providerOverride ?? 'default';
     } catch {
       // Network error — keep current state.
     }
@@ -71,6 +82,7 @@
         body: JSON.stringify({
           content: fd.get('content'),
           scenario: fd.get('scenario') ?? 'happy_path',
+          providerOverride,
         }),
       });
       const body = await res.json();
@@ -99,6 +111,7 @@
         body: JSON.stringify({
           question: fd.get('question'),
           scenario: fd.get('scenario') ?? 'happy_path',
+          providerOverride,
         }),
       });
       const body = await res.json();
@@ -146,7 +159,9 @@
       <h2 class="subtitle is-5">Summary</h2>
       <p>{summary}</p>
       <p class="is-size-7 has-text-grey">
-        Provider: {provider}{fallbackOccurred ? ' (fallback used)' : ''}
+        Provider: {provider}{model ? ` · Model: ${model}` : ''}{fallbackOccurred
+          ? ' (fallback)'
+          : ''}
       </p>
     </section>
   {/if}
@@ -161,7 +176,14 @@
             <div class="card-content">
               <div class="content">
                 <p class="mb-1"><strong>Q:</strong> {item.question}</p>
-                <p class="mb-0"><strong>A:</strong> {item.answer}</p>
+                <p class="mb-1"><strong>A:</strong> {item.answer}</p>
+                {#if item.provider}
+                  <p class="mb-0 is-size-7 has-text-grey">
+                    Provider: {item.provider}{item.model
+                      ? ` · Model: ${item.model}`
+                      : ''}
+                  </p>
+                {/if}
               </div>
             </div>
           </div>
@@ -203,6 +225,19 @@
         </div>
       </div>
 
+      <div class="field">
+        <label class="label" for="provider-override">AI provider</label>
+        <div class="control">
+          <div class="select">
+            <select id="provider-override" bind:value={providerOverride}>
+              <option value="default">Default (OpenAI → Anthropic)</option>
+              <option value="openai">OpenAI only</option>
+              <option value="anthropic">Anthropic only</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {#if error}
         <p class="help is-danger">{error}</p>
       {/if}
@@ -239,7 +274,9 @@
     <h2 class="subtitle is-5">Summary</h2>
     <p>{summary}</p>
     <p class="is-size-7 has-text-grey">
-      Provider: {provider}{fallbackOccurred ? ' (fallback used)' : ''}
+      Provider: {provider}{model ? ` · Model: ${model}` : ''}{fallbackOccurred
+        ? ' (fallback used)'
+        : ''}
     </p>
   </section>
 
@@ -280,6 +317,19 @@
         </div>
       </div>
 
+      <div class="field">
+        <label class="label" for="qa-provider-override">AI provider</label>
+        <div class="control">
+          <div class="select">
+            <select id="qa-provider-override" bind:value={providerOverride}>
+              <option value="default">Default (OpenAI → Anthropic)</option>
+              <option value="openai">OpenAI only</option>
+              <option value="anthropic">Anthropic only</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {#if error}
         <p class="help is-danger">{error}</p>
       {/if}
@@ -313,7 +363,14 @@
             <div class="card-content">
               <div class="content">
                 <p class="mb-1"><strong>Q:</strong> {item.question}</p>
-                <p class="mb-0"><strong>A:</strong> {item.answer}</p>
+                <p class="mb-1"><strong>A:</strong> {item.answer}</p>
+                {#if item.provider}
+                  <p class="mb-0 is-size-7 has-text-grey">
+                    Provider: {item.provider}{item.model
+                      ? ` · Model: ${item.model}`
+                      : ''}
+                  </p>
+                {/if}
               </div>
             </div>
           </div>

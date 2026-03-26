@@ -99,27 +99,10 @@ func TestFaultyProvider_AlwaysFails(t *testing.T) {
 	assert.Equal(t, "injected failure", err.Error())
 }
 
-func TestAnthropic_Summarise(t *testing.T) {
-	p := &providers.Anthropic{}
+func TestNewAnthropic_Name(t *testing.T) {
+	p := providers.NewAnthropic("test-key", "")
 
-	resp, err := p.Summarise(context.Background(), testReq)
-
-	require.NoError(t, err)
-	assert.Contains(t, resp.Summary, "[anthropic]")
-	assert.Contains(t, resp.Summary, "1 chunk(s)")
-}
-
-func TestAnthropic_Answer(t *testing.T) {
-	p := &providers.Anthropic{}
-	req := providers.AnswerRequest{
-		Content:  "the quick brown fox",
-		Question: "what did the fox do?",
-	}
-
-	resp, err := p.Answer(context.Background(), req)
-
-	require.NoError(t, err)
-	assert.Contains(t, resp.Answer, "[anthropic]")
+	assert.Equal(t, models.ProviderAnthropic, p.Name())
 }
 
 var testAnswerReq = providers.AnswerRequest{

@@ -26,6 +26,7 @@ func SummariseWithFailover(ctx context.Context, chain []Summariser, req Summaris
 		return models.SummariseResult{
 			Summary:          resp.Summary,
 			Provider:         p.Name(),
+			Model:            resp.Model,
 			FallbackOccurred: i > 0,
 		}, nil
 	}
@@ -50,6 +51,7 @@ func AnswerWithFailover(ctx context.Context, chain []QuestionAnswerer, req Answe
 		return models.AnswerResult{
 			Answer:           resp.Answer,
 			Provider:         p.Name(),
+			Model:            resp.Model,
 			FallbackOccurred: i > 0,
 		}, nil
 	}

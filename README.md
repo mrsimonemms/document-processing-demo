@@ -55,15 +55,17 @@ root go.mod). Do not add application logic to the root.
 
 **AI provider configuration:**
 
-| Variable         | Required | Purpose                             |
-| ---------------- | -------- | ----------------------------------- |
-| `OPENAI_API_KEY` | Yes      | OpenAI API key                      |
-| `OPENAI_MODEL`   | No       | Model name (default: `gpt-4o-mini`) |
+| Variable            | Required | Purpose                                                     |
+| ------------------- | -------- | ----------------------------------------------------------- |
+| `OPENAI_API_KEY`    | Yes      | OpenAI API key (primary provider)                           |
+| `OPENAI_MODEL`      | No       | OpenAI model name (default: `gpt-4o`)                       |
+| `ANTHROPIC_API_KEY` | No       | Anthropic API key (fallback provider)                       |
+| `ANTHROPIC_MODEL`   | No       | Anthropic model name (default: `claude-haiku-4-5-20251001`) |
 
-OpenAI is the primary AI provider. The Anthropic provider is a deterministic
-fake used only as the fallback in the demo failover scenario. It does not
-require an Anthropic API key. Additional real providers can be added later by
-implementing the `Summariser` and `QuestionAnswerer` interfaces.
+OpenAI is the primary provider. Anthropic is the real fallback provider: when
+OpenAI fails or the scenario injects a primary provider failure, the worker
+retries the operation using Anthropic. If `ANTHROPIC_API_KEY` is not set, no
+fallback is configured and a warning is logged at startup.
 
 ### Start the worker
 

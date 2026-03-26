@@ -38,21 +38,24 @@ func exec() error {
 	}
 	zerolog.SetGlobalLevel(level)
 
-	apiKey, ok := os.LookupEnv("OPENAI_API_KEY")
-	if !ok || apiKey == "" {
+	openaiKey, ok := os.LookupEnv("OPENAI_API_KEY")
+	if !ok || openaiKey == "" {
 		return gh.FatalError{Msg: "OPENAI_API_KEY environment variable is required"}
 	}
 
-	// OPENAI_MODEL is optional; NewOpenAI defaults to gpt-4o-mini.
-	model := os.Getenv("OPENAI_MODEL")
+	// OPENAI_MODEL is optional; NewOpenAI defaults to gpt-4o.
+	openaiModel := os.Getenv("OPENAI_MODEL")
+	openaiProvider := providers.NewOpenAI(openaiKey, openaiModel)
 
-	openaiProvider := providers.NewOpenAI(apiKey, model)
+	anthropicKey, ok := os.LookupEnv("ANTHROPIC_API_KEY")
+	if !ok || anthropicKey == "" {
+		return gh.FatalError{Msg: "ANTHROPIC_API_KEY environment variable is required"}
+	}
+	anthropicModel := os.Getenv("ANTHROPIC_MODEL")
+	anthropicProvider := providers.NewAnthropic(anthropicKey, anthropicModel)
 
-	// Build provider chains. OpenAI is primary; Anthropic fake is fallback.
-	// The Anthropic entry ensures the demo failover scenario still works
-	// without requiring a real Anthropic API key.
-	summarisers := providers.NewChain(openaiProvider, &providers.Anthropic{})
-	questioners := providers.NewQuestionChain(openaiProvider, &providers.Anthropic{})
+	summarisers := providers.NewChain(openaiProvider, anthropicProvider)
+	questioners := providers.NewQuestionChain(openaiProvider, anthropicProvider)
 
 	acts := activities.NewActivities(summarisers, questioners)
 
@@ -87,7 +90,7 @@ func exec() error {
 	log.Info().
 		Str("taskQueue", models.TaskQueue).
 		Str("provider", string(models.ProviderOpenAI)).
-		Str("model", model).
+		Str("model", openaiModel).
 		Msg("Worker ready")
 
 	// Block until the process receives a shutdown signal.

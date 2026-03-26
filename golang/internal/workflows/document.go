@@ -44,7 +44,11 @@ func defaultActivityOptions() workflow.ActivityOptions {
 // The workflow ID is the documentId, so one session maps to one workflow.
 func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 	// State visible to the UI via the "getState" query at any point.
-	state := models.DocumentState{Phase: "processing", QA: []models.QA{}}
+	state := models.DocumentState{
+		Phase:            "processing",
+		QA:               []models.QA{},
+		ProviderOverride: input.ProviderOverride,
+	}
 
 	if err := workflow.SetQueryHandler(ctx, "getState", func() (models.DocumentState, error) {
 		return state, nil
@@ -68,10 +72,11 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 	}
 
 	// Step 3: summarise via provider chain
-	// Failure injection is handled inside the activity, driven by input.Scenario.
+	// Failure injection and provider selection are handled inside the activity.
 	summariseInput := models.SummariseInput{
-		Chunks:   chunks,
-		Scenario: input.Scenario,
+		Chunks:           chunks,
+		Scenario:         input.Scenario,
+		ProviderOverride: input.ProviderOverride,
 	}
 
 	var summariseResult models.SummariseResult
@@ -83,7 +88,10 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 		Phase:            "summarised",
 		Summary:          summariseResult.Summary,
 		Provider:         summariseResult.Provider,
+		Model:            summariseResult.Model,
 		FallbackOccurred: summariseResult.FallbackOccurred,
+		QA:               state.QA,
+		ProviderOverride: input.ProviderOverride,
 	}
 
 	// Step 4: register update handler for questions.
@@ -99,10 +107,11 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 			history := recentHistory(state.QA, models.MaxAnswerHistory)
 
 			answerInput := models.AnswerInput{
-				Content:  input.Content,
-				Question: req.Question,
-				Scenario: req.Scenario,
-				History:  history,
+				Content:          input.Content,
+				Question:         req.Question,
+				Scenario:         req.Scenario,
+				ProviderOverride: req.ProviderOverride,
+				History:          history,
 			}
 
 			var result models.AnswerResult
@@ -110,9 +119,12 @@ func DocumentWorkflow(ctx workflow.Context, input models.DocumentInput) error {
 				return models.QuestionUpdateResult{}, err
 			}
 
+			state.ProviderOverride = req.ProviderOverride
 			state.QA = append(state.QA, models.QA{
 				Question: req.Question,
 				Answer:   result.Answer,
+				Provider: result.Provider,
+				Model:    result.Model,
 			})
 
 			return models.QuestionUpdateResult{Answer: result.Answer}, nil

@@ -60,7 +60,7 @@ func (o *OpenAI) Summarise(ctx context.Context, req SummariseRequest) (Summarise
 		return SummariseResponse{}, fmt.Errorf("openai summarise: no choices in response")
 	}
 
-	return SummariseResponse{Summary: strings.TrimSpace(resp.Choices[0].Message.Content)}, nil
+	return SummariseResponse{Summary: strings.TrimSpace(resp.Choices[0].Message.Content), Model: o.model}, nil
 }
 
 // Answer answers a question grounded in the provided document content.
@@ -111,5 +111,5 @@ func (o *OpenAI) Answer(ctx context.Context, req AnswerRequest) (AnswerResponse,
 		return AnswerResponse{}, fmt.Errorf("openai answer: no choices in response")
 	}
 
-	return AnswerResponse{Answer: strings.TrimSpace(resp.Choices[0].Message.Content)}, nil
+	return AnswerResponse{Answer: strings.TrimSpace(resp.Choices[0].Message.Content), Model: o.model}, nil
 }

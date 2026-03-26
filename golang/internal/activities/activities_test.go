@@ -33,6 +33,24 @@ func (f *fakePrimary) Answer(_ context.Context, req providers.AnswerRequest) (pr
 	}, nil
 }
 
+// fakeFallback implements both Summariser and QuestionAnswerer for the Anthropic
+// fallback slot. It returns deterministic output without calling a real API.
+type fakeFallback struct{}
+
+func (f *fakeFallback) Name() models.ProviderName { return models.ProviderAnthropic }
+
+func (f *fakeFallback) Summarise(_ context.Context, req providers.SummariseRequest) (providers.SummariseResponse, error) {
+	return providers.SummariseResponse{
+		Summary: fmt.Sprintf("[anthropic] %d chunk(s)", len(req.Chunks)),
+	}, nil
+}
+
+func (f *fakeFallback) Answer(_ context.Context, req providers.AnswerRequest) (providers.AnswerResponse, error) {
+	return providers.AnswerResponse{
+		Answer: fmt.Sprintf("[anthropic] answer to: %s", req.Question),
+	}, nil
+}
+
 func newActivityEnv(t *testing.T) (*testsuite.TestActivityEnvironment, *activities.Activities) {
 	t.Helper()
 
@@ -40,7 +58,7 @@ func newActivityEnv(t *testing.T) (*testsuite.TestActivityEnvironment, *activiti
 	env := ts.NewTestActivityEnvironment()
 
 	primary := &fakePrimary{}
-	fallback := &providers.Anthropic{}
+	fallback := &fakeFallback{}
 
 	acts := activities.NewActivities(
 		[]providers.Summariser{primary, fallback},

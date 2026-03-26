@@ -3,6 +3,7 @@ module github.com/mrsimonemms/document-processing-demo/golang
 go 1.25.0
 
 require (
+	github.com/anthropics/anthropic-sdk-go v1.27.1
 	github.com/mrsimonemms/golang-helpers v0.5.1
 	github.com/openai/openai-go v1.12.0
 	github.com/rs/zerolog v1.34.0

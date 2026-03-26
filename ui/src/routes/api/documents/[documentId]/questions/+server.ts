@@ -1,4 +1,4 @@
-import type { Scenario } from '$lib/server/temporal';
+import type { ProviderOverride, Scenario } from '$lib/server/temporal';
 import { askDocumentQuestion } from '$lib/server/temporal';
 import { json } from '@sveltejs/kit';
 
@@ -8,6 +8,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
   const body = await request.json();
   const question: unknown = body.question;
   const scenario: Scenario = body.scenario ?? 'happy_path';
+  const providerOverride: ProviderOverride = body.providerOverride ?? 'default';
 
   if (typeof question !== 'string' || !question.trim()) {
     return json({ error: 'Question is required.' }, { status: 400 });
@@ -17,6 +18,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
     params.documentId,
     question,
     scenario,
+    providerOverride,
   );
   return json({ question, answer });
 };
