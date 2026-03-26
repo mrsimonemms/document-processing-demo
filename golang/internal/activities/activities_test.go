@@ -113,6 +113,44 @@ func TestSummariseDocumentActivity_ProviderFailover(t *testing.T) {
 	assert.Contains(t, result.Summary, "[anthropic]")
 }
 
+func TestSummariseDocumentActivity_ProviderDown(t *testing.T) {
+	env, acts := newActivityEnv(t)
+
+	input := models.SummariseInput{
+		Chunks:   []string{"the quick brown fox"},
+		Scenario: models.ScenarioProviderDown,
+	}
+
+	val, err := env.ExecuteActivity(acts.SummariseDocumentActivity, input)
+	require.NoError(t, err)
+
+	var result models.SummariseResult
+	require.NoError(t, val.Get(&result))
+
+	assert.Equal(t, models.ProviderAnthropic, result.Provider)
+	assert.True(t, result.FallbackOccurred)
+	assert.Contains(t, result.Summary, "[anthropic]")
+}
+
+func TestSummariseDocumentActivity_ProviderRateLimit(t *testing.T) {
+	env, acts := newActivityEnv(t)
+
+	input := models.SummariseInput{
+		Chunks:   []string{"the quick brown fox"},
+		Scenario: models.ScenarioProviderRateLimit,
+	}
+
+	val, err := env.ExecuteActivity(acts.SummariseDocumentActivity, input)
+	require.NoError(t, err)
+
+	var result models.SummariseResult
+	require.NoError(t, val.Get(&result))
+
+	assert.Equal(t, models.ProviderAnthropic, result.Provider)
+	assert.True(t, result.FallbackOccurred)
+	assert.Contains(t, result.Summary, "[anthropic]")
+}
+
 // TestSummariseDocumentActivity_FailOnceSummarise_FirstAttempt verifies that
 // the activity returns an error on attempt 1 under the fail_once_summarise
 // scenario. Temporal would retry this automatically in a real workflow run.
@@ -193,6 +231,46 @@ func TestAnswerQuestionActivity_ProviderFailover(t *testing.T) {
 		Content:  "the quick brown fox",
 		Question: "what did the fox do?",
 		Scenario: models.ScenarioProviderFailover,
+	}
+
+	val, err := env.ExecuteActivity(acts.AnswerQuestionActivity, input)
+	require.NoError(t, err)
+
+	var result models.AnswerResult
+	require.NoError(t, val.Get(&result))
+
+	assert.Equal(t, models.ProviderAnthropic, result.Provider)
+	assert.True(t, result.FallbackOccurred)
+	assert.Contains(t, result.Answer, "[anthropic]")
+}
+
+func TestAnswerQuestionActivity_ProviderDown(t *testing.T) {
+	env, acts := newActivityEnv(t)
+
+	input := models.AnswerInput{
+		Content:  "the quick brown fox",
+		Question: "what did the fox do?",
+		Scenario: models.ScenarioProviderDown,
+	}
+
+	val, err := env.ExecuteActivity(acts.AnswerQuestionActivity, input)
+	require.NoError(t, err)
+
+	var result models.AnswerResult
+	require.NoError(t, val.Get(&result))
+
+	assert.Equal(t, models.ProviderAnthropic, result.Provider)
+	assert.True(t, result.FallbackOccurred)
+	assert.Contains(t, result.Answer, "[anthropic]")
+}
+
+func TestAnswerQuestionActivity_ProviderRateLimit(t *testing.T) {
+	env, acts := newActivityEnv(t)
+
+	input := models.AnswerInput{
+		Content:  "the quick brown fox",
+		Question: "what did the fox do?",
+		Scenario: models.ScenarioProviderRateLimit,
 	}
 
 	val, err := env.ExecuteActivity(acts.AnswerQuestionActivity, input)

@@ -19,6 +19,15 @@ const (
 	// deterministically, forcing the failover mechanism to use the fallback
 	// provider. Demonstrates provider-level resilience without real API calls.
 	ScenarioProviderFailover Scenario = "primary_provider_failure"
+
+	// ScenarioProviderDown causes each provider to fail with a retryable
+	// provider-down error. Failover logic retries each provider up to 3 times.
+	ScenarioProviderDown Scenario = "provider_down"
+
+	// ScenarioProviderRateLimit causes providers to fail with a non-retryable
+	// rate-limit error. Failover logic skips retries and moves immediately to
+	// the next provider in the chain.
+	ScenarioProviderRateLimit Scenario = "provider_rate_limit"
 )
 
 // ProviderName identifies an AI provider.
@@ -69,13 +78,15 @@ type QA struct {
 // Phase transitions: "processing" -> "summarised" -> "ended".
 // The UI polls this to drive page state.
 type DocumentState struct {
-	Phase            string           `json:"phase"` // "processing" | "summarised" | "ended"
-	Summary          string           `json:"summary,omitempty"`
-	Provider         ProviderName     `json:"provider,omitempty"`
-	Model            string           `json:"model,omitempty"`
-	FallbackOccurred bool             `json:"fallbackOccurred"`
-	QA               []QA             `json:"qa"`
-	ProviderOverride ProviderOverride `json:"providerOverride,omitempty"`
+	Phase             string           `json:"phase"` // "processing" | "summarised" | "summary_failed" | "ended"
+	Summary           string           `json:"summary,omitempty"`
+	SummaryError      string           `json:"summaryError,omitempty"`
+	Provider          ProviderName     `json:"provider,omitempty"`
+	Model             string           `json:"model,omitempty"`
+	FallbackOccurred  bool             `json:"fallbackOccurred"`
+	LastQuestionError string           `json:"lastQuestionError,omitempty"`
+	QA                []QA             `json:"qa"`
+	ProviderOverride  ProviderOverride `json:"providerOverride,omitempty"`
 }
 
 // SummariseInput is passed to SummariseDocumentActivity.

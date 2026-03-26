@@ -14,7 +14,9 @@ const TASK_QUEUE = 'document-processing';
 export type Scenario =
   | 'happy_path'
   | 'fail_once_summarise'
-  | 'primary_provider_failure';
+  | 'primary_provider_failure'
+  | 'provider_down'
+  | 'provider_rate_limit';
 
 export type ProviderOverride = 'default' | 'openai' | 'anthropic';
 
@@ -25,13 +27,22 @@ export interface SessionState {
   // pending     – no workflow running for this document yet
   // processing  – workflow is running, summary not yet ready
   // summarised  – summary complete, Q&A available
+  // summary_failed – summary provider calls failed, session still alive
   // ended       – end signal received, session closed
   // failed      – workflow failed or timed out
-  phase: 'pending' | 'processing' | 'summarised' | 'ended' | 'failed';
+  phase:
+    | 'pending'
+    | 'processing'
+    | 'summarised'
+    | 'summary_failed'
+    | 'ended'
+    | 'failed';
   summary?: string;
+  summaryError?: string;
   provider?: string;
   model?: string;
   fallbackOccurred?: boolean;
+  lastQuestionError?: string;
   qa: Array<{
     question: string;
     answer: string;
@@ -43,11 +54,13 @@ export interface SessionState {
 
 // DocumentState mirrors the Go DocumentState struct returned by the getState query.
 interface DocumentState {
-  phase: 'processing' | 'summarised' | 'ended';
+  phase: 'processing' | 'summarised' | 'summary_failed' | 'ended';
   summary?: string;
+  summaryError?: string;
   provider?: string;
   model?: string;
   fallbackOccurred?: boolean;
+  lastQuestionError?: string;
   qa: Array<{
     question: string;
     answer: string;
@@ -141,9 +154,11 @@ export async function getDocumentState(
         documentId,
         phase: state.phase,
         summary: state.summary,
+        summaryError: state.summaryError,
         provider: state.provider,
         model: state.model,
         fallbackOccurred: state.fallbackOccurred,
+        lastQuestionError: state.lastQuestionError,
         qa: state.qa ?? [],
         providerOverride: state.providerOverride,
       };
@@ -160,9 +175,11 @@ export async function getDocumentState(
           documentId,
           phase: 'ended',
           summary: state.summary,
+          summaryError: state.summaryError,
           provider: state.provider,
           model: state.model,
           fallbackOccurred: state.fallbackOccurred,
+          lastQuestionError: state.lastQuestionError,
           qa: state.qa ?? [],
           providerOverride: state.providerOverride,
         };

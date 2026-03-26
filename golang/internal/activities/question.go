@@ -2,8 +2,10 @@ package activities
 
 import (
 	"context"
+	"fmt"
 
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/temporal"
 
 	"github.com/mrsimonemms/document-processing-demo/golang/internal/models"
 	"github.com/mrsimonemms/document-processing-demo/golang/internal/providers"
@@ -26,12 +28,23 @@ func (a *Activities) AnswerQuestionActivity(ctx context.Context, input models.An
 		chain[0] = providers.NewFaultyQuestionProvider(chain[0], "simulated primary provider failure")
 	}
 
+	if input.Scenario == models.ScenarioProviderDown && len(chain) > 0 {
+		chain[0] = providers.NewDownQuestionProvider(chain[0], fmt.Sprintf("simulated %s provider down", chain[0].Name()))
+	}
+
+	if input.Scenario == models.ScenarioProviderRateLimit && len(chain) > 0 {
+		chain[0] = providers.NewRateLimitQuestionProvider(chain[0], fmt.Sprintf("simulated %s provider rate limit", chain[0].Name()))
+	}
+
 	result, err := providers.AnswerWithFailover(ctx, chain, providers.AnswerRequest{
 		Content:  input.Content,
 		Question: input.Question,
 		History:  input.History,
 	})
 	if err != nil {
+		if providers.IsProviderError(err) {
+			return models.AnswerResult{}, temporal.NewNonRetryableApplicationError(err.Error(), "ProviderError", err)
+		}
 		return models.AnswerResult{}, err
 	}
 

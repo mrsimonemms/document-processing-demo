@@ -14,11 +14,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
     return json({ error: 'Question is required.' }, { status: 400 });
   }
 
-  const answer = await askDocumentQuestion(
-    params.documentId,
-    question,
-    scenario,
-    providerOverride,
-  );
-  return json({ question, answer });
+  try {
+    const answer = await askDocumentQuestion(
+      params.documentId,
+      question,
+      scenario,
+      providerOverride,
+    );
+    return json({ question, answer });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Question request failed.';
+    return json({ error: message }, { status: 500 });
+  }
 };

@@ -29,6 +29,40 @@ func (f *fakeProvider) Answer(_ context.Context, _ providers.AnswerRequest) (pro
 	return providers.AnswerResponse{Answer: f.output}, nil
 }
 
+type countingSummariser struct {
+	name     models.ProviderName
+	output   string
+	err      error
+	attempts *int
+}
+
+func (c *countingSummariser) Name() models.ProviderName { return c.name }
+
+func (c *countingSummariser) Summarise(_ context.Context, _ providers.SummariseRequest) (providers.SummariseResponse, error) {
+	*c.attempts = *c.attempts + 1
+	if c.err != nil {
+		return providers.SummariseResponse{}, c.err
+	}
+	return providers.SummariseResponse{Summary: c.output}, nil
+}
+
+type countingQuestionAnswerer struct {
+	name     models.ProviderName
+	output   string
+	err      error
+	attempts *int
+}
+
+func (c *countingQuestionAnswerer) Name() models.ProviderName { return c.name }
+
+func (c *countingQuestionAnswerer) Answer(_ context.Context, _ providers.AnswerRequest) (providers.AnswerResponse, error) {
+	*c.attempts = *c.attempts + 1
+	if c.err != nil {
+		return providers.AnswerResponse{}, c.err
+	}
+	return providers.AnswerResponse{Answer: c.output}, nil
+}
+
 // testChain builds a two-provider summarise chain using fakeProvider instances.
 func testChain() []providers.Summariser {
 	return []providers.Summariser{
@@ -79,6 +113,55 @@ func TestSummariseWithFailover_AllProvidersFail(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "all providers failed")
+}
+
+func TestSummariseWithFailover_RetriesDownProvidersThreeTimesEach(t *testing.T) {
+	primaryAttempts := 0
+	fallbackAttempts := 0
+	chain := []providers.Summariser{
+		&countingSummariser{
+			name:     models.ProviderOpenAI,
+			err:      providers.NewProviderError(providers.FailureDown, "openai down"),
+			attempts: &primaryAttempts,
+		},
+		&countingSummariser{
+			name:     models.ProviderAnthropic,
+			err:      providers.NewProviderError(providers.FailureDown, "anthropic down"),
+			attempts: &fallbackAttempts,
+		},
+	}
+
+	_, err := providers.SummariseWithFailover(context.Background(), chain, testReq)
+
+	require.Error(t, err)
+	assert.Equal(t, 3, primaryAttempts)
+	assert.Equal(t, 3, fallbackAttempts)
+	assert.Contains(t, err.Error(), "openai attempt 3/3")
+	assert.Contains(t, err.Error(), "anthropic attempt 3/3")
+}
+
+func TestSummariseWithFailover_RateLimitSkipsRetries(t *testing.T) {
+	primaryAttempts := 0
+	fallbackAttempts := 0
+	chain := []providers.Summariser{
+		&countingSummariser{
+			name:     models.ProviderOpenAI,
+			err:      providers.NewProviderError(providers.FailureRateLimit, "openai rate limit"),
+			attempts: &primaryAttempts,
+		},
+		&countingSummariser{
+			name:     models.ProviderAnthropic,
+			output:   "[anthropic] fake summary",
+			attempts: &fallbackAttempts,
+		},
+	}
+
+	result, err := providers.SummariseWithFailover(context.Background(), chain, testReq)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, primaryAttempts)
+	assert.Equal(t, 1, fallbackAttempts)
+	assert.Equal(t, models.ProviderAnthropic, result.Provider)
 }
 
 func TestSummariseWithFailover_EmptyChain(t *testing.T) {
@@ -142,6 +225,55 @@ func TestAnswerWithFailover_AllProvidersFail(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "all providers failed")
+}
+
+func TestAnswerWithFailover_RetriesDownProvidersThreeTimesEach(t *testing.T) {
+	primaryAttempts := 0
+	fallbackAttempts := 0
+	chain := []providers.QuestionAnswerer{
+		&countingQuestionAnswerer{
+			name:     models.ProviderOpenAI,
+			err:      providers.NewProviderError(providers.FailureDown, "openai down"),
+			attempts: &primaryAttempts,
+		},
+		&countingQuestionAnswerer{
+			name:     models.ProviderAnthropic,
+			err:      providers.NewProviderError(providers.FailureDown, "anthropic down"),
+			attempts: &fallbackAttempts,
+		},
+	}
+
+	_, err := providers.AnswerWithFailover(context.Background(), chain, testAnswerReq)
+
+	require.Error(t, err)
+	assert.Equal(t, 3, primaryAttempts)
+	assert.Equal(t, 3, fallbackAttempts)
+	assert.Contains(t, err.Error(), "openai attempt 3/3")
+	assert.Contains(t, err.Error(), "anthropic attempt 3/3")
+}
+
+func TestAnswerWithFailover_RateLimitSkipsRetries(t *testing.T) {
+	primaryAttempts := 0
+	fallbackAttempts := 0
+	chain := []providers.QuestionAnswerer{
+		&countingQuestionAnswerer{
+			name:     models.ProviderOpenAI,
+			err:      providers.NewProviderError(providers.FailureRateLimit, "openai rate limit"),
+			attempts: &primaryAttempts,
+		},
+		&countingQuestionAnswerer{
+			name:     models.ProviderAnthropic,
+			output:   "[anthropic] fake answer",
+			attempts: &fallbackAttempts,
+		},
+	}
+
+	result, err := providers.AnswerWithFailover(context.Background(), chain, testAnswerReq)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, primaryAttempts)
+	assert.Equal(t, 1, fallbackAttempts)
+	assert.Equal(t, models.ProviderAnthropic, result.Provider)
 }
 
 func TestFaultyQuestionProvider_AlwaysFails(t *testing.T) {
