@@ -2,6 +2,7 @@
   "singleQuote": true,
   "trailingComma": "all",
   "printWidth": 80,
+  "proseWrap": "always",
   "plugins": [
     "prettier-plugin-svelte",
     "@trivago/prettier-plugin-sort-imports"
